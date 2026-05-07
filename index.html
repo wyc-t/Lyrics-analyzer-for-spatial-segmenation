@@ -1,0 +1,2265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MXL + Lyrics Annotation Analyzer</title>
+
+<!-- Fonts: JetBrains Mono for data, Noto Serif TC for CJK -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!-- JSZip -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL6njuko7QrZqzg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<style>
+:root {
+  --bg-0: #0b0d10;
+  --bg-1: #11151a;
+  --bg-2: #161b22;
+  --bg-3: #1d242c;
+  --bg-hover: #222a33;
+  --border: #262e38;
+  --border-strong: #3a4654;
+  --text-0: #e6edf3;
+  --text-1: #b8c2cc;
+  --text-2: #7d8896;
+  --text-3: #525c66;
+  --accent: #79c0ff;
+  --accent-dim: #2d4f6e;
+  --warn: #d29922;
+  --error: #f85149;
+  --ok: #3fb950;
+  --localmax: #d2a8ff;
+  --rest: #4a5563;
+  --measure-line: #2c3744;
+  --bar-default: #4a6173;
+
+  /* Heatmap ramp (0 to max) — sequential blue→cyan→yellow→orange */
+  --hm-0: #14181d;
+  --hm-1: #1f3a4c;
+  --hm-2: #1e6072;
+  --hm-3: #2d8e8e;
+  --hm-4: #67b06e;
+  --hm-5: #b9b449;
+  --hm-6: #d29922;
+  --hm-7: #e8693c;
+
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --serif-cjk: 'Noto Serif TC', 'PingFang TC', 'Songti TC', serif;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-family: var(--mono);
+  font-size: 13px;
+  height: 100%;
+  overflow: hidden;
+}
+
+button, input, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-0);
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background .12s, border-color .12s;
+}
+button:hover:not(:disabled) {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+}
+button:disabled { opacity: .4; cursor: not-allowed; }
+button.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg-0);
+}
+button.danger { color: var(--error); border-color: #5b2128; }
+button.danger:hover { background: #2a1416; }
+
+select, input[type="text"] {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  border-radius: 3px;
+}
+
+/* ---------- Layout ---------- */
+
+#app {
+  display: grid;
+  grid-template-rows: 44px 1fr;
+  grid-template-columns: 280px 1fr;
+  grid-template-areas:
+    "header header"
+    "sidebar main";
+  height: 100vh;
+}
+
+header.topbar {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 14px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+}
+header.topbar .title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-0);
+}
+header.topbar .title span {
+  color: var(--text-3);
+  font-weight: 400;
+  margin-left: 8px;
+}
+header.topbar .spacer { flex: 1; }
+header.topbar .folder-name {
+  color: var(--text-2);
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+aside.sidebar {
+  grid-area: sidebar;
+  background: var(--bg-1);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-section {
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-section h3 {
+  margin: 0;
+  padding: 10px 14px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.song-list {
+  list-style: none;
+  margin: 0; padding: 4px 0 8px;
+}
+.song-list li {
+  padding: 7px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.song-list li:hover { background: var(--bg-2); }
+.song-list li.active {
+  background: var(--bg-2);
+  border-left-color: var(--accent);
+}
+.song-list li.unpaired { color: var(--warn); }
+.song-list .song-meta {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+main.main {
+  grid-area: main;
+  overflow: auto;
+  padding: 0;
+  background: var(--bg-0);
+}
+
+/* ---------- Welcome / Empty states ---------- */
+
+.welcome {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--text-1);
+  text-align: center;
+  padding: 40px;
+}
+.welcome h2 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.welcome p { color: var(--text-2); max-width: 540px; line-height: 1.5; }
+.welcome .browser-warn {
+  background: #2b1d12;
+  border: 1px solid #5a3a18;
+  color: var(--warn);
+  padding: 12px 16px;
+  border-radius: 4px;
+  max-width: 540px;
+}
+
+/* ---------- Song view ---------- */
+
+.song-header {
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.song-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+.song-title .cjk { font-family: var(--serif-cjk); margin-right: 10px; }
+.song-meta-row {
+  display: flex;
+  gap: 18px;
+  color: var(--text-2);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.song-meta-row span strong {
+  color: var(--text-1);
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 4px;
+}
+.tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  font-weight: 500;
+  border-radius: 0;
+}
+.tab:hover { color: var(--text-0); background: transparent; }
+.tab.active {
+  color: var(--text-0);
+  border-bottom-color: var(--accent);
+}
+.tab .badge {
+  display: inline-block;
+  background: var(--bg-3);
+  color: var(--text-2);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  margin-left: 6px;
+}
+.tab .badge.warn { background: #2b1d12; color: var(--warn); }
+.tab .badge.error { background: #2a1416; color: var(--error); }
+
+.tab-panel {
+  padding: 20px;
+}
+
+/* ---------- Character view ---------- */
+
+.cv-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.cv-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.cv-controls input[type="range"] { width: 120px; }
+
+.legend {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text-2);
+  flex-wrap: wrap;
+}
+.legend .swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+
+.char-track-container {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  position: relative;
+}
+
+.char-track {
+  display: flex;
+  align-items: flex-end;
+  position: relative;
+  padding-bottom: 28px;
+  /* height set inline based on max duration */
+}
+.char-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 28px;
+  width: 28px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background .1s;
+}
+.char-cell.measure-start { border-left: 1px solid var(--measure-line); }
+.char-cell.measure-start .measure-num {
+  position: absolute;
+  top: -10px;
+  left: 2px;
+  font-size: 9px;
+  color: var(--text-3);
+}
+.char-cell:hover { background: var(--bg-3); }
+.char-cell.selected { background: var(--bg-hover); }
+
+.char-bar {
+  width: 70%;
+  background: var(--bar-default);
+  border-radius: 2px 2px 0 0;
+  position: relative;
+  /* height set inline */
+}
+.char-cell.localmax .char-bar {
+  background: var(--localmax);
+}
+.char-cell.rest .char-bar {
+  background: var(--rest);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,.25) 3px,
+    rgba(0,0,0,.25) 6px
+  );
+}
+
+.char-label {
+  font-family: var(--serif-cjk);
+  font-size: 14px;
+  margin-top: 4px;
+  color: var(--text-0);
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.char-cell.rest .char-label { color: var(--text-3); }
+
+/* break ticks on right edge */
+.break-ticks {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 28px;
+  width: 4px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 1px;
+  padding-bottom: 22px;
+  pointer-events: none;
+}
+.break-tick {
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.break-tick.line { background: var(--warn); width: 4px; height: 6px; }
+
+/* heatmap */
+.heatmap-row {
+  display: flex;
+  margin-top: 6px;
+}
+.heatmap-cell {
+  width: 28px;
+  height: 18px;
+  flex-shrink: 0;
+  background: var(--hm-0);
+  border-right: 1px solid var(--bg-1);
+  position: relative;
+}
+.heatmap-cell .hm-count {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: rgba(255,255,255,.85);
+  font-weight: 500;
+}
+
+.heatmap-label {
+  font-size: 10px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+/* ---------- Detail panel ---------- */
+
+.detail-panel {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.detail-panel h4 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px 16px;
+}
+.detail-grid .row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dotted var(--border);
+  padding: 4px 0;
+}
+.detail-grid .k { color: var(--text-2); }
+.detail-grid .v { color: var(--text-0); font-weight: 500; }
+.detail-grid .v.cjk { font-family: var(--serif-cjk); font-size: 16px; }
+
+.detail-versions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.version-pill {
+  padding: 3px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.version-pill.has-break {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.version-pill.has-line-break {
+  background: #3d2c11;
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* ---------- Version filter ---------- */
+
+.version-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.version-checkbox {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-2);
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 11px;
+  user-select: none;
+}
+.version-checkbox.on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.version-checkbox.ignored {
+  opacity: .4;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+/* ---------- Measure view ---------- */
+
+.measure-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.measure-table th {
+  background: var(--bg-2);
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--text-3);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.measure-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.measure-table tr:last-child td { border-bottom: none; }
+.measure-table .m-num {
+  width: 50px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.measure-table .m-track {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.measure-table .m-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 30px;
+  position: relative;
+}
+.measure-table .m-cell .m-bar {
+  width: 22px;
+  background: var(--bar-default);
+  border-radius: 2px 2px 0 0;
+}
+.measure-table .m-cell.localmax .m-bar { background: var(--localmax); }
+.measure-table .m-cell.rest .m-bar {
+  background: var(--rest);
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent, transparent 3px,
+    rgba(0,0,0,.25) 3px, rgba(0,0,0,.25) 6px
+  );
+}
+.measure-table .m-cell .m-char {
+  font-family: var(--serif-cjk);
+  font-size: 14px;
+  margin-top: 3px;
+}
+.measure-table .m-cell .m-break {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 22px;
+  width: 3px;
+  background: var(--accent);
+  opacity: var(--break-opacity, .6);
+}
+.measure-table .m-cell .m-break.line {
+  background: var(--warn);
+  width: 4px;
+}
+
+/* ---------- Alignment view ---------- */
+
+.alignment-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 12px;
+  padding: 14px;
+}
+.alignment-card.aligned { border-left: 3px solid var(--ok); }
+.alignment-card.length-mismatch { border-left: 3px solid var(--error); }
+.alignment-card.char-mismatch { border-left: 3px solid var(--error); }
+.alignment-card.ignored { border-left: 3px solid var(--text-3); opacity: .7; }
+
+.alignment-card h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.alignment-card .status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.alignment-card .status.aligned { background: #0f2c14; color: var(--ok); }
+.alignment-card .status.length-mismatch { background: #2a1416; color: var(--error); }
+.alignment-card .status.char-mismatch { background: #2a1416; color: var(--error); }
+.alignment-card .status.ignored { background: var(--bg-3); color: var(--text-2); }
+
+.align-stats {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 8px;
+}
+.align-rows {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 4px 10px;
+  align-items: center;
+}
+.align-rows .lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text-3);
+}
+.align-rows .seq {
+  font-family: var(--serif-cjk);
+  font-size: 16px;
+  line-height: 1.6;
+  word-break: break-all;
+  letter-spacing: 1px;
+  background: var(--bg-2);
+  padding: 6px 8px;
+  border-radius: 3px;
+}
+.align-rows .seq .ch.mismatch {
+  background: var(--error);
+  color: var(--bg-0);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.align-rows .seq .ch.extra {
+  background: var(--warn);
+  color: var(--bg-0);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+/* ---------- Stats view ---------- */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.stat-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 16px;
+}
+.stat-card .label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--text-3);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.stat-card .value {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-0);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.stat-card .value.warn { color: var(--warn); }
+.stat-card .value.accent { color: var(--accent); }
+.stat-card .value.ok { color: var(--ok); }
+.stat-card .value.localmax { color: var(--localmax); }
+.stat-card .sub {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+.stat-card.full { grid-column: 1 / -1; }
+
+.dist-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin-top: 8px;
+  height: 80px;
+}
+.dist-bar {
+  flex: 1;
+  background: var(--accent-dim);
+  border-top: 2px solid var(--accent);
+  position: relative;
+  min-height: 1px;
+}
+.dist-bar .lbl {
+  position: absolute;
+  bottom: -16px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-3);
+}
+.dist-bar .val {
+  position: absolute;
+  top: -14px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-1);
+}
+
+/* ---------- Pairing UI ---------- */
+
+.pairing-panel {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.pairing-panel h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.unpaired-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.unpaired-list h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+.unpaired-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--bg-2);
+  border-radius: 3px;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+/* ---------- Tooltip ---------- */
+
+#tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  padding: 6px 9px;
+  border-radius: 3px;
+  font-size: 11px;
+  z-index: 1000;
+  display: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,.5);
+}
+#tooltip .cjk { font-family: var(--serif-cjk); font-size: 14px; }
+
+/* ---------- Toast ---------- */
+
+#toast-container {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.toast {
+  padding: 8px 14px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  font-size: 12px;
+  animation: slidein .15s ease-out;
+}
+.toast.error { border-color: var(--error); color: var(--error); }
+.toast.warn { border-color: var(--warn); color: var(--warn); }
+.toast.ok { border-color: var(--ok); color: var(--ok); }
+@keyframes slidein {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg-0); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+</style>
+</head>
+
+<body>
+
+<div id="app">
+  <header class="topbar">
+    <div class="title">MXL × Lyrics Annotation Analyzer <span>cantopop spatial-break analysis</span></div>
+    <div class="spacer"></div>
+    <span class="folder-name" id="folder-name"></span>
+    <button id="btn-open-folder" class="primary">Open project folder…</button>
+    <button id="btn-rescan" disabled>Rescan</button>
+    <button id="btn-close" disabled>Close</button>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+      <h3>Songs</h3>
+      <ul class="song-list" id="song-list"></ul>
+    </div>
+    <div class="sidebar-section" id="unpaired-section" style="display:none">
+      <h3>Unpaired</h3>
+      <ul class="song-list" id="unpaired-list"></ul>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="welcome" id="welcome">
+      <h2>No project open</h2>
+      <p>Pick a local folder containing paired <code>.mxl</code> and <code>.md</code> files. Files stay on your machine — nothing is uploaded.</p>
+      <div id="browser-warn" class="browser-warn" style="display:none"></div>
+      <button class="primary" id="btn-open-folder-2">Open project folder…</button>
+    </div>
+  </main>
+</div>
+
+<div id="tooltip"></div>
+<div id="toast-container"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+ *  IndexedDB helpers — for persisting the FileSystemDirectoryHandle
+ * ============================================================ */
+
+const IDB_NAME = 'mxl-analyzer';
+const IDB_STORE = 'handles';
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const r = tx.objectStore(IDB_STORE).get(key);
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(val, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function idbDel(key) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/* ============================================================
+ *  MXL parsing
+ * ============================================================ */
+
+async function parseMXL(file) {
+  const buf = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+
+  // Find root MusicXML file via container.xml
+  let rootPath = null;
+  if (zip.files['META-INF/container.xml']) {
+    const containerXml = await zip.files['META-INF/container.xml'].async('string');
+    const cdoc = new DOMParser().parseFromString(containerXml, 'application/xml');
+    const rf = cdoc.querySelector('rootfile');
+    if (rf) rootPath = rf.getAttribute('full-path');
+  }
+  if (!rootPath) {
+    for (const name in zip.files) {
+      if (name.endsWith('.xml') && !name.startsWith('META-INF/')) { rootPath = name; break; }
+    }
+  }
+  if (!rootPath) throw new Error('No MusicXML file found inside MXL');
+
+  const xmlText = await zip.files[rootPath].async('string');
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const parserError = doc.querySelector('parsererror');
+  if (parserError) throw new Error('Invalid MusicXML: ' + parserError.textContent.slice(0, 120));
+
+  return parseMusicXMLDoc(doc);
+}
+
+async function parseMXLOrXML(file) {
+  // Support raw .musicxml/.xml as well
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith('.mxl')) return parseMXL(file);
+  const text = await file.text();
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const parserError = doc.querySelector('parsererror');
+  if (parserError) throw new Error('Invalid MusicXML: ' + parserError.textContent.slice(0, 120));
+  return parseMusicXMLDoc(doc);
+}
+
+function parseMusicXMLDoc(doc) {
+  const parts = doc.querySelectorAll('part');
+  if (!parts.length) throw new Error('No <part> elements found');
+
+  // Pick first part with lyrics; else first part
+  let chosen = null;
+  for (const p of parts) {
+    if (p.querySelector('lyric')) { chosen = p; break; }
+  }
+  if (!chosen) chosen = parts[0];
+
+  // Part name (try score-part definition)
+  const partId = chosen.getAttribute('id');
+  let partName = '';
+  if (partId) {
+    const sp = doc.querySelector(`score-part[id="${CSS.escape(partId)}"] > part-name`);
+    if (sp) partName = sp.textContent.trim();
+  }
+
+  // Work title
+  let workTitle = '';
+  const wt = doc.querySelector('work > work-title');
+  if (wt) workTitle = wt.textContent.trim();
+  if (!workTitle) {
+    const movement = doc.querySelector('movement-title');
+    if (movement) workTitle = movement.textContent.trim();
+  }
+
+  // Composer (creator type=composer)
+  let composer = '';
+  const composerEl = doc.querySelector('identification > creator[type="composer"]');
+  if (composerEl) composer = composerEl.textContent.trim();
+
+  let divisions = 1;
+  let timeSignature = null;
+  let tempo = null;
+
+  // entries: { kind: 'note'|'rest', char, durationQL, durationEighth, measure, pitch, isLocalMax, melismaCount, idx }
+  const entries = [];
+  let lastNoteEntryIdx = -1;
+  const measures = chosen.querySelectorAll('measure');
+
+  measures.forEach((m, mi) => {
+    const measureNum = parseInt(m.getAttribute('number'), 10);
+    const measureNumSafe = Number.isFinite(measureNum) ? measureNum : (mi + 1);
+
+    // Update divisions
+    const divEls = m.querySelectorAll(':scope > attributes > divisions');
+    if (divEls.length) {
+      const v = parseInt(divEls[divEls.length - 1].textContent, 10);
+      if (Number.isFinite(v) && v > 0) divisions = v;
+    }
+    // Time signature (first encountered)
+    if (!timeSignature) {
+      const t = m.querySelector(':scope > attributes > time');
+      if (t) {
+        const beats = t.querySelector('beats')?.textContent;
+        const beatType = t.querySelector('beat-type')?.textContent;
+        if (beats && beatType) timeSignature = `${beats}/${beatType}`;
+      }
+    }
+    // Tempo (first encountered)
+    if (!tempo) {
+      const sound = m.querySelector('sound[tempo]');
+      if (sound) {
+        const tv = parseFloat(sound.getAttribute('tempo'));
+        if (Number.isFinite(tv)) tempo = tv;
+      }
+      if (!tempo) {
+        const pm = m.querySelector('metronome > per-minute');
+        if (pm) {
+          const tv = parseFloat(pm.textContent);
+          if (Number.isFinite(tv)) tempo = tv;
+        }
+      }
+    }
+
+    const noteEls = m.querySelectorAll(':scope > note');
+    noteEls.forEach(n => {
+      // Skip chord-continuation notes (additional pitches in a chord don't get separate timeline)
+      if (n.querySelector(':scope > chord')) return;
+      // Skip grace notes
+      if (n.querySelector(':scope > grace')) return;
+
+      const isRest = !!n.querySelector(':scope > rest');
+      const durEl = n.querySelector(':scope > duration');
+      const dur = durEl ? parseInt(durEl.textContent, 10) : 0;
+      const durationQL = dur / divisions;
+      const durationEighth = durationQL * 2;
+
+      if (isRest) {
+        entries.push({
+          kind: 'rest',
+          char: '𝄽',
+          durationQL,
+          durationEighth,
+          measure: measureNumSafe,
+          pitch: null,
+          isLocalMax: false,
+          melismaCount: 0,
+        });
+        return;
+      }
+
+      // Pitch
+      const pitchEl = n.querySelector(':scope > pitch');
+      let pitch = null;
+      if (pitchEl) {
+        const step = pitchEl.querySelector('step')?.textContent || '';
+        const octave = pitchEl.querySelector('octave')?.textContent || '';
+        const alter = parseInt(pitchEl.querySelector('alter')?.textContent || '0', 10);
+        const altStr = alter === 1 ? '#' : alter === -1 ? 'b' : alter === 2 ? '##' : alter === -2 ? 'bb' : '';
+        pitch = step + altStr + octave;
+      }
+
+      // Lyric — pick verse 1 if multiple
+      let lyricText = null;
+      let syllabic = null;
+      const lyricEls = n.querySelectorAll(':scope > lyric');
+      for (const lel of lyricEls) {
+        const num = lel.getAttribute('number');
+        if (num === null || num === '1' || lyricEls.length === 1) {
+          const t = lel.querySelector('text');
+          if (t && t.textContent.trim()) {
+            lyricText = t.textContent.trim();
+            syllabic = lel.querySelector('syllabic')?.textContent || null;
+            break;
+          }
+        }
+      }
+
+      if (lyricText) {
+        entries.push({
+          kind: 'note',
+          char: lyricText,
+          durationQL,
+          durationEighth,
+          measure: measureNumSafe,
+          pitch,
+          isLocalMax: false,
+          melismaCount: 1,
+          syllabic,
+        });
+        lastNoteEntryIdx = entries.length - 1;
+      } else {
+        // Melisma continuation OR instrumental note
+        if (lastNoteEntryIdx >= 0 && entries[lastNoteEntryIdx].kind === 'note') {
+          // Heuristic: if the previous entry is a note and there's no rest between, treat as melisma
+          // Check if anything between lastNoteEntryIdx and current is a rest
+          let isMelisma = true;
+          for (let j = lastNoteEntryIdx + 1; j < entries.length; j++) {
+            if (entries[j].kind === 'rest') { isMelisma = false; break; }
+          }
+          if (isMelisma) {
+            entries[lastNoteEntryIdx].durationQL += durationQL;
+            entries[lastNoteEntryIdx].durationEighth += durationEighth;
+            entries[lastNoteEntryIdx].melismaCount += 1;
+            return;
+          }
+        }
+        // Otherwise: instrumental note — record as instrumental rest-like entry (but mark distinct)
+        entries.push({
+          kind: 'instrumental',
+          char: '·',
+          durationQL,
+          durationEighth,
+          measure: measureNumSafe,
+          pitch,
+          isLocalMax: false,
+          melismaCount: 0,
+        });
+      }
+    });
+  });
+
+  // Compute local maxima only over note entries
+  const noteEntries = entries.filter(e => e.kind === 'note');
+  for (let i = 0; i < noteEntries.length; i++) {
+    const prev = i > 0 ? noteEntries[i - 1].durationEighth : -Infinity;
+    const next = i < noteEntries.length - 1 ? noteEntries[i + 1].durationEighth : -Infinity;
+    noteEntries[i].isLocalMax = noteEntries[i].durationEighth > prev && noteEntries[i].durationEighth > next;
+  }
+
+  return {
+    entries,        // chronological, includes rests + instrumentals + notes
+    noteEntries,    // only notes — character sequence for alignment
+    timeSignature,
+    tempo,
+    divisions,
+    workTitle,
+    composer,
+    partName,
+  };
+}
+
+/* ============================================================
+ *  MD parsing
+ * ============================================================ */
+
+function parseMD(text) {
+  const versions = [];
+  const re = /\*\*\[(\d+)\.(\d+)\]\*\*([^\n]*)\n?([\s\S]*?)(?=\*\*\[\d+\.\d+\]\*\*|$)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const songNum = parseInt(m[1], 10);
+    const versionNum = parseInt(m[2], 10);
+    const headerExtra = m[3].trim();
+    const body = m[4].trim();
+
+    let lyricLine = '';
+    let metadata = null;
+
+    if (body) {
+      // body is the lyric (possibly multiline; we take the first non-empty content line or the join)
+      lyricLine = body.split('\n').map(s => s.trim()).filter(Boolean).join('');
+      if (headerExtra) metadata = headerExtra;
+    } else {
+      lyricLine = headerExtra;
+    }
+
+    if (!lyricLine) {
+      versions.push({
+        id: `${songNum}.${versionNum}`,
+        songNum, versionNum,
+        ignored: true,
+        reason: 'Empty lyric',
+        characters: [],
+        breakPositions: [],
+        lineBreakPositions: [],
+        metadata,
+      });
+      continue;
+    }
+
+    // Detect dot-notation entries — ignore them
+    // Heuristic: contains a '.' between two CJK chars and contains no '/'
+    const cjkDotBetween = /[\u3400-\u9FFF]\s*\.\s*[\u3400-\u9FFF]/.test(lyricLine);
+    if (cjkDotBetween && !lyricLine.includes('/')) {
+      versions.push({
+        id: `${songNum}.${versionNum}`,
+        songNum, versionNum,
+        ignored: true,
+        reason: 'Uses dot notation',
+        characters: [],
+        breakPositions: [],
+        lineBreakPositions: [],
+        metadata,
+        lyricRaw: lyricLine,
+      });
+      continue;
+    }
+
+    // Walk through, build characters[] and break positions
+    const characters = [];
+    const breakPositions = [];      // indices after which a / occurs
+    const lineBreakPositions = [];  // indices after which a // occurs
+    let i = 0;
+    while (i < lyricLine.length) {
+      const ch = lyricLine[i];
+      if (ch === '/') {
+        const isLine = lyricLine[i + 1] === '/';
+        if (characters.length > 0) {
+          if (isLine) lineBreakPositions.push(characters.length - 1);
+          else breakPositions.push(characters.length - 1);
+        }
+        i += isLine ? 2 : 1;
+      } else if (/\s/.test(ch)) {
+        i++;
+      } else if (ch === '\u200B' || ch === '\uFEFF') {
+        // zero-width characters
+        i++;
+      } else {
+        // any printable Unicode character is a "character" — including CJK and others
+        characters.push(ch);
+        i++;
+      }
+    }
+
+    versions.push({
+      id: `${songNum}.${versionNum}`,
+      songNum, versionNum,
+      lyricRaw: lyricLine,
+      characters,
+      breakPositions,
+      lineBreakPositions,
+      metadata,
+      ignored: false,
+    });
+  }
+  return versions;
+}
+
+/* ============================================================
+ *  Alignment
+ * ============================================================ */
+
+function alignVersions(parsed, versions) {
+  const mxlChars = parsed.noteEntries.map(e => e.char);
+  return versions.map(v => {
+    if (v.ignored) {
+      return { ...v, alignmentStatus: 'ignored', mxlLength: mxlChars.length, mdLength: v.characters.length };
+    }
+    const md = v.characters;
+    const minLen = Math.min(mxlChars.length, md.length);
+    let firstMismatch = -1;
+    const mismatches = [];
+    for (let i = 0; i < minLen; i++) {
+      if (mxlChars[i] !== md[i]) {
+        if (firstMismatch < 0) firstMismatch = i;
+        mismatches.push(i);
+      }
+    }
+    let status;
+    if (mxlChars.length !== md.length) status = mismatches.length ? 'char-mismatch' : 'length-mismatch';
+    else if (mismatches.length) status = 'char-mismatch';
+    else status = 'aligned';
+    return {
+      ...v,
+      alignmentStatus: status,
+      mxlLength: mxlChars.length,
+      mdLength: md.length,
+      firstMismatch,
+      mismatches,
+    };
+  });
+}
+
+/* ============================================================
+ *  Permission helpers
+ * ============================================================ */
+
+async function verifyPermission(handle, mode = 'readwrite') {
+  const opts = { mode };
+  try {
+    if ((await handle.queryPermission(opts)) === 'granted') return true;
+    if ((await handle.requestPermission(opts)) === 'granted') return true;
+  } catch (e) {
+    return false;
+  }
+  return false;
+}
+
+/* ============================================================
+ *  State
+ * ============================================================ */
+
+const state = {
+  dirHandle: null,
+  manifest: { version: 1, songs: {} }, // songs keyed by stem
+  songs: [],   // [{ stem, mxlHandle, mdHandle, parsed, versions, aligned, error }]
+  unpaired: { mxl: [], md: [] }, // [{ name, handle }]
+  selectedStem: null,
+  view: 'character', // 'character' | 'measure' | 'alignment' | 'stats'
+  selectedCharIdx: null,
+  enabledVersions: new Set(), // ids of enabled versions for current song
+  showLineBreaks: true,
+  showSpatialBreaks: true,
+  pixelsPerEighth: 14,
+};
+
+/* ============================================================
+ *  UI helpers
+ * ============================================================ */
+
+function $(sel, root = document) { return root.querySelector(sel); }
+function $$(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
+
+function el(tag, attrs = {}, children = []) {
+  const e = document.createElement(tag);
+  for (const k in attrs) {
+    if (k === 'class') e.className = attrs[k];
+    else if (k === 'style') e.style.cssText = attrs[k];
+    else if (k === 'dataset') Object.assign(e.dataset, attrs[k]);
+    else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
+    else if (k === 'html') e.innerHTML = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  for (const c of [].concat(children)) {
+    if (c == null) continue;
+    if (typeof c === 'string' || typeof c === 'number') e.appendChild(document.createTextNode(c));
+    else e.appendChild(c);
+  }
+  return e;
+}
+
+function toast(msg, kind = '') {
+  const t = el('div', { class: 'toast ' + kind }, msg);
+  $('#toast-container').appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .25s'; }, 3000);
+  setTimeout(() => t.remove(), 3400);
+}
+
+function showTooltip(html, x, y) {
+  const tt = $('#tooltip');
+  tt.innerHTML = html;
+  tt.style.display = 'block';
+  const rect = tt.getBoundingClientRect();
+  const px = Math.min(x + 12, window.innerWidth - rect.width - 8);
+  const py = Math.min(y + 12, window.innerHeight - rect.height - 8);
+  tt.style.left = px + 'px';
+  tt.style.top = py + 'px';
+}
+function hideTooltip() { $('#tooltip').style.display = 'none'; }
+
+/* ============================================================
+ *  Browser support check
+ * ============================================================ */
+
+function checkBrowserSupport() {
+  if (!('showDirectoryPicker' in window)) {
+    const w = $('#browser-warn');
+    w.style.display = 'block';
+    w.innerHTML = `
+      <strong>This browser does not support the File System Access API.</strong><br>
+      You need a Chromium-based browser (Chrome, Edge, Opera) on macOS, Windows, or Linux.
+      Firefox and Safari will not work — there is no fallback that can read a folder of files persistently.
+    `;
+    $('#btn-open-folder').disabled = true;
+    $('#btn-open-folder-2').disabled = true;
+    return false;
+  }
+  return true;
+}
+
+/* ============================================================
+ *  Folder opening / scanning
+ * ============================================================ */
+
+async function openFolder(forcePicker = true) {
+  let handle = null;
+  if (!forcePicker) {
+    handle = await idbGet('dirHandle').catch(() => null);
+    if (handle && !(await verifyPermission(handle))) handle = null;
+  }
+  if (!handle) {
+    try {
+      handle = await window.showDirectoryPicker({ id: 'mxl-analyzer-folder', mode: 'readwrite' });
+    } catch (e) {
+      if (e.name !== 'AbortError') toast('Failed to open folder: ' + e.message, 'error');
+      return;
+    }
+    await idbSet('dirHandle', handle);
+  }
+  state.dirHandle = handle;
+  $('#folder-name').textContent = handle.name;
+  $('#btn-rescan').disabled = false;
+  $('#btn-close').disabled = false;
+  await scanFolder();
+}
+
+async function closeFolder() {
+  await idbDel('dirHandle');
+  state.dirHandle = null;
+  state.manifest = { version: 1, songs: {} };
+  state.songs = [];
+  state.unpaired = { mxl: [], md: [] };
+  state.selectedStem = null;
+  $('#folder-name').textContent = '';
+  $('#btn-rescan').disabled = true;
+  $('#btn-close').disabled = true;
+  renderSidebar();
+  renderMain();
+}
+
+async function scanFolder() {
+  if (!state.dirHandle) return;
+  const dir = state.dirHandle;
+  const mxlFiles = new Map();
+  const mdFiles = new Map();
+
+  for await (const [name, entry] of dir.entries()) {
+    if (entry.kind !== 'file') continue;
+    const lower = name.toLowerCase();
+    if (lower.endsWith('.mxl') || lower.endsWith('.musicxml') || lower.endsWith('.xml')) {
+      const stem = name.replace(/\.(mxl|musicxml|xml)$/i, '');
+      mxlFiles.set(stem, { name, handle: entry });
+    } else if (lower.endsWith('.md') && lower !== 'readme.md' && lower !== 'project.json') {
+      const stem = name.replace(/\.md$/i, '');
+      mdFiles.set(stem, { name, handle: entry });
+    }
+  }
+
+  // Load manifest if it exists
+  let manifest = { version: 1, songs: {} };
+  try {
+    const mh = await dir.getFileHandle('project.json');
+    const mf = await mh.getFile();
+    const txt = await mf.text();
+    if (txt.trim()) manifest = JSON.parse(txt);
+    if (!manifest.songs) manifest.songs = {};
+  } catch (e) {
+    // missing or unreadable manifest — that's fine
+  }
+  state.manifest = manifest;
+
+  // Pair by stem
+  const songs = [];
+  const unpairedMxl = [];
+  const unpairedMd = [];
+  const pairedStems = new Set();
+  for (const [stem, mxl] of mxlFiles) {
+    if (mdFiles.has(stem)) {
+      pairedStems.add(stem);
+      songs.push({
+        stem,
+        mxl, md: mdFiles.get(stem),
+        parsed: null, versions: null, aligned: null, error: null,
+      });
+    } else {
+      unpairedMxl.push(mxl);
+    }
+  }
+  for (const [stem, md] of mdFiles) {
+    if (!pairedStems.has(stem)) unpairedMd.push(md);
+  }
+
+  // Apply manual pairings from manifest
+  if (manifest.pairings) {
+    for (const [mxlName, mdName] of Object.entries(manifest.pairings)) {
+      const mxlIdx = unpairedMxl.findIndex(x => x.name === mxlName);
+      const mdIdx = unpairedMd.findIndex(x => x.name === mdName);
+      if (mxlIdx >= 0 && mdIdx >= 0) {
+        const stem = mxlName.replace(/\.(mxl|musicxml|xml)$/i, '') + '__paired';
+        songs.push({
+          stem,
+          mxl: unpairedMxl[mxlIdx],
+          md: unpairedMd[mdIdx],
+          parsed: null, versions: null, aligned: null, error: null,
+        });
+        unpairedMxl.splice(mxlIdx, 1);
+        unpairedMd.splice(mdIdx, 1);
+      }
+    }
+  }
+
+  state.songs = songs.sort((a, b) => a.stem.localeCompare(b.stem));
+  state.unpaired = { mxl: unpairedMxl, md: unpairedMd };
+
+  // Parse all songs in parallel
+  await Promise.all(state.songs.map(loadSong));
+
+  toast(`Loaded ${state.songs.length} song(s)` + (unpairedMxl.length + unpairedMd.length ? ` · ${unpairedMxl.length + unpairedMd.length} unpaired` : ''), 'ok');
+
+  renderSidebar();
+  if (!state.selectedStem && state.songs.length) selectSong(state.songs[0].stem);
+  else if (state.selectedStem) selectSong(state.selectedStem);
+  else renderMain();
+}
+
+async function loadSong(song) {
+  try {
+    const mxlFile = await song.mxl.handle.getFile();
+    const mdFile = await song.md.handle.getFile();
+    const [parsed, mdText] = await Promise.all([
+      parseMXLOrXML(mxlFile),
+      mdFile.text(),
+    ]);
+    const versions = parseMD(mdText);
+    const aligned = alignVersions(parsed, versions);
+    song.parsed = parsed;
+    song.versions = versions;
+    song.aligned = aligned;
+    song.error = null;
+  } catch (e) {
+    console.error('loadSong error', song.stem, e);
+    song.error = e.message || String(e);
+  }
+}
+
+async function saveManifest() {
+  if (!state.dirHandle) return;
+  try {
+    const fh = await state.dirHandle.getFileHandle('project.json', { create: true });
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(state.manifest, null, 2));
+    await w.close();
+  } catch (e) {
+    toast('Could not save project.json: ' + e.message, 'error');
+  }
+}
+
+/* ============================================================
+ *  Selection / view switching
+ * ============================================================ */
+
+function selectSong(stem) {
+  state.selectedStem = stem;
+  state.selectedCharIdx = null;
+  const song = state.songs.find(s => s.stem === stem);
+  if (song && song.aligned) {
+    state.enabledVersions = new Set(song.aligned.filter(v => !v.ignored).map(v => v.id));
+  } else {
+    state.enabledVersions = new Set();
+  }
+  renderSidebar();
+  renderMain();
+}
+
+function setView(v) {
+  state.view = v;
+  renderMain();
+}
+
+/* ============================================================
+ *  Rendering — sidebar
+ * ============================================================ */
+
+function renderSidebar() {
+  const list = $('#song-list');
+  list.innerHTML = '';
+  if (!state.songs.length) {
+    list.appendChild(el('li', { style: 'color: var(--text-3); cursor: default; padding: 8px 14px;' }, 'No songs paired yet'));
+  }
+  for (const s of state.songs) {
+    const meta = state.manifest.songs?.[s.stem] || {};
+    const title = meta.title || s.stem;
+    const versionsCount = s.aligned ? s.aligned.filter(v => !v.ignored).length : 0;
+    const errCount = s.aligned ? s.aligned.filter(v => v.alignmentStatus === 'char-mismatch' || v.alignmentStatus === 'length-mismatch').length : 0;
+    const li = el('li', {
+      class: state.selectedStem === s.stem ? 'active' : '',
+      onclick: () => selectSong(s.stem),
+    }, [
+      el('span', {}, title),
+      el('span', { class: 'song-meta' }, s.error ? '✕' : `${versionsCount}v${errCount ? ' ⚠' : ''}`),
+    ]);
+    list.appendChild(li);
+  }
+
+  const upSec = $('#unpaired-section');
+  const upList = $('#unpaired-list');
+  upList.innerHTML = '';
+  const totalUnpaired = state.unpaired.mxl.length + state.unpaired.md.length;
+  if (totalUnpaired) {
+    upSec.style.display = '';
+    state.unpaired.mxl.forEach(f => upList.appendChild(el('li', { class: 'unpaired', style: 'cursor:default' }, [
+      el('span', {}, f.name),
+      el('span', { class: 'song-meta' }, '.mxl'),
+    ])));
+    state.unpaired.md.forEach(f => upList.appendChild(el('li', { class: 'unpaired', style: 'cursor:default' }, [
+      el('span', {}, f.name),
+      el('span', { class: 'song-meta' }, '.md'),
+    ])));
+  } else {
+    upSec.style.display = 'none';
+  }
+}
+
+/* ============================================================
+ *  Rendering — main
+ * ============================================================ */
+
+function renderMain() {
+  const main = $('#main');
+  if (!state.dirHandle) {
+    main.innerHTML = '';
+    main.appendChild(buildWelcome());
+    return;
+  }
+  if (!state.songs.length) {
+    main.innerHTML = '';
+    main.appendChild(buildPairingView());
+    return;
+  }
+  if (!state.selectedStem) {
+    main.innerHTML = '';
+    main.appendChild(el('div', { class: 'welcome' }, [
+      el('h2', {}, 'Pick a song'),
+      el('p', {}, 'Select a song from the sidebar to begin.'),
+    ]));
+    return;
+  }
+  const song = state.songs.find(s => s.stem === state.selectedStem);
+  if (!song) return;
+
+  main.innerHTML = '';
+
+  if (song.error) {
+    main.appendChild(el('div', { class: 'welcome' }, [
+      el('h2', { style: 'color: var(--error);' }, `Failed to load ${song.stem}`),
+      el('p', { style: 'font-family: var(--mono); font-size: 12px;' }, song.error),
+      el('button', { onclick: async () => { await loadSong(song); renderSidebar(); renderMain(); } }, 'Retry'),
+    ]));
+    return;
+  }
+
+  main.appendChild(buildSongHeader(song));
+  const panel = el('div', { class: 'tab-panel' });
+  if (state.view === 'character') panel.appendChild(buildCharacterView(song));
+  else if (state.view === 'measure') panel.appendChild(buildMeasureView(song));
+  else if (state.view === 'alignment') panel.appendChild(buildAlignmentView(song));
+  else if (state.view === 'stats') panel.appendChild(buildStatsView(song));
+  main.appendChild(panel);
+}
+
+function buildWelcome() {
+  return el('div', { class: 'welcome' }, [
+    el('h2', {}, 'No project open'),
+    el('p', {}, 'Pick a local folder containing paired .mxl and .md files. Files stay on your machine — nothing is uploaded.'),
+    el('div', { id: 'browser-warn', class: 'browser-warn', style: ('showDirectoryPicker' in window) ? 'display:none' : '' },
+      ('showDirectoryPicker' in window) ? '' :
+      'This browser does not support the File System Access API. Use Chrome, Edge, or Opera.'),
+    el('button', { class: 'primary', disabled: !('showDirectoryPicker' in window), onclick: () => openFolder(true) }, 'Open project folder…'),
+  ]);
+}
+
+function buildPairingView() {
+  const c = el('div', { class: 'tab-panel' });
+  c.appendChild(el('h2', { style: 'margin: 0 0 12px;' }, `Folder: ${state.dirHandle.name}`));
+  c.appendChild(el('p', { style: 'color: var(--text-2)' }, 'No paired .mxl + .md files found. Drop matching files into the folder and rescan.'));
+  if (state.unpaired.mxl.length || state.unpaired.md.length) {
+    const panel = el('div', { class: 'pairing-panel' });
+    panel.appendChild(el('h3', {}, 'Unpaired files'));
+    const grid = el('div', { class: 'unpaired-list' });
+    grid.appendChild(el('div', {}, [
+      el('h4', {}, '.mxl files'),
+      ...state.unpaired.mxl.map(f => el('div', { class: 'unpaired-item' }, [el('span', {}, f.name)])),
+      state.unpaired.mxl.length === 0 ? el('div', { style: 'color: var(--text-3)' }, '—') : null,
+    ]));
+    grid.appendChild(el('div', {}, [
+      el('h4', {}, '.md files'),
+      ...state.unpaired.md.map(f => el('div', { class: 'unpaired-item' }, [el('span', {}, f.name)])),
+      state.unpaired.md.length === 0 ? el('div', { style: 'color: var(--text-3)' }, '—') : null,
+    ]));
+    panel.appendChild(grid);
+    c.appendChild(panel);
+  }
+  return c;
+}
+
+function buildSongHeader(song) {
+  const meta = state.manifest.songs?.[song.stem] || {};
+  const parsed = song.parsed;
+  const versionsCount = song.aligned ? song.aligned.filter(v => !v.ignored).length : 0;
+  const errCount = song.aligned ? song.aligned.filter(v => v.alignmentStatus === 'char-mismatch' || v.alignmentStatus === 'length-mismatch').length : 0;
+
+  const titleSpan = meta.title
+    ? el('span', { class: 'cjk' }, meta.title)
+    : el('span', {}, song.stem);
+
+  const header = el('div', { class: 'song-header' }, [
+    el('h2', { class: 'song-title' }, [
+      titleSpan,
+      el('span', { style: 'color: var(--text-3); font-weight: 400; font-size: 13px;' }, song.stem),
+    ]),
+    el('div', { class: 'song-meta-row' }, [
+      el('span', {}, ['Time sig: ', el('strong', {}, parsed.timeSignature || '—')]),
+      el('span', {}, ['Tempo: ', el('strong', {}, parsed.tempo ? `♩=${parsed.tempo}` : '—')]),
+      el('span', {}, ['Characters: ', el('strong', {}, parsed.noteEntries.length.toString())]),
+      el('span', {}, ['MV versions: ', el('strong', {}, versionsCount.toString())]),
+      parsed.composer ? el('span', {}, ['Composer: ', el('strong', {}, parsed.composer)]) : null,
+    ]),
+    buildTabs(song, errCount),
+  ]);
+  return header;
+}
+
+function buildTabs(song, errCount) {
+  const tabs = el('div', { class: 'tabs' });
+  const mk = (id, label, badge, badgeKind) => {
+    const b = el('button', {
+      class: 'tab' + (state.view === id ? ' active' : ''),
+      onclick: () => setView(id),
+    }, [label]);
+    if (badge != null) b.appendChild(el('span', { class: 'badge ' + (badgeKind || '') }, badge.toString()));
+    return b;
+  };
+  tabs.appendChild(mk('character', 'Character'));
+  tabs.appendChild(mk('measure', 'Measure'));
+  tabs.appendChild(mk('alignment', 'Alignment', errCount, errCount ? 'error' : ''));
+  tabs.appendChild(mk('stats', 'Stats'));
+  return tabs;
+}
+
+/* ============================================================
+ *  Character view
+ * ============================================================ */
+
+function buildCharacterView(song) {
+  const wrap = el('div');
+  wrap.appendChild(buildCVControls(song));
+
+  // Main char track
+  const noteEntries = song.parsed.noteEntries;
+  const allEntries = song.parsed.entries;
+
+  // Compute break counts at each note position (only for enabled non-ignored versions)
+  const breakCount = new Array(noteEntries.length).fill(0);
+  const lineBreakCount = new Array(noteEntries.length).fill(0);
+  const enabledAligned = song.aligned.filter(v => !v.ignored && state.enabledVersions.has(v.id));
+  for (const v of enabledAligned) {
+    for (const p of v.breakPositions) {
+      if (p >= 0 && p < breakCount.length) breakCount[p] += 1;
+    }
+    for (const p of v.lineBreakPositions) {
+      if (p >= 0 && p < lineBreakCount.length) {
+        lineBreakCount[p] += 1;
+        breakCount[p] += 1; // line break counts as a break too
+      }
+    }
+  }
+
+  // Compute max duration for height scaling
+  let maxDur = 1;
+  for (const e of allEntries) if (e.durationEighth > maxDur) maxDur = e.durationEighth;
+  const px = state.pixelsPerEighth;
+  const trackHeight = Math.max(80, maxDur * px + 40);
+
+  const container = el('div', { class: 'char-track-container' });
+  const track = el('div', { class: 'char-track', style: `height: ${trackHeight}px;` });
+
+  // Build cells. We render all entries in chronological order, but only note entries get a position index for breaks.
+  let noteIdx = 0;
+  let lastMeasure = null;
+  for (let i = 0; i < allEntries.length; i++) {
+    const e = allEntries[i];
+    const isMeasureStart = e.measure !== lastMeasure;
+    lastMeasure = e.measure;
+
+    const cellClasses = ['char-cell'];
+    if (isMeasureStart) cellClasses.push('measure-start');
+    if (e.kind === 'rest') cellClasses.push('rest');
+    if (e.kind === 'instrumental') cellClasses.push('rest');
+    if (e.kind === 'note' && e.isLocalMax) cellClasses.push('localmax');
+    if (e.kind === 'note' && state.selectedCharIdx === noteIdx) cellClasses.push('selected');
+
+    const barHeight = Math.max(2, e.durationEighth * px);
+    const myNoteIdx = e.kind === 'note' ? noteIdx : -1;
+    const myBreakCount = myNoteIdx >= 0 ? breakCount[myNoteIdx] : 0;
+    const myLineBreakCount = myNoteIdx >= 0 ? lineBreakCount[myNoteIdx] : 0;
+
+    const cell = el('div', {
+      class: cellClasses.join(' '),
+      onmouseenter: (ev) => {
+        const r = ev.currentTarget.getBoundingClientRect();
+        showTooltip(buildCharTooltip(e, myNoteIdx, myBreakCount, myLineBreakCount), r.right, r.top);
+      },
+      onmousemove: (ev) => {
+        const tt = $('#tooltip');
+        if (tt.style.display === 'block') {
+          const w = tt.offsetWidth, h = tt.offsetHeight;
+          tt.style.left = Math.min(ev.clientX + 12, window.innerWidth - w - 8) + 'px';
+          tt.style.top  = Math.min(ev.clientY + 12, window.innerHeight - h - 8) + 'px';
+        }
+      },
+      onmouseleave: hideTooltip,
+      onclick: () => {
+        if (e.kind === 'note') {
+          state.selectedCharIdx = (state.selectedCharIdx === noteIdx) ? null : noteIdx;
+          renderMain();
+        }
+      },
+    }, [
+      isMeasureStart ? el('span', { class: 'measure-num' }, e.measure.toString()) : null,
+      el('div', { class: 'char-bar', style: `height: ${barHeight}px;` }),
+      el('div', { class: 'char-label' }, e.char),
+      myNoteIdx >= 0 && (myBreakCount > 0 || myLineBreakCount > 0) ?
+        buildBreakTicks(myBreakCount - myLineBreakCount, myLineBreakCount) : null,
+    ]);
+
+    track.appendChild(cell);
+    if (e.kind === 'note') noteIdx++;
+  }
+
+  container.appendChild(track);
+
+  // Heatmap row below — one cell per NOTE (we need to align with the note cells, so we need to skip rests in heatmap)
+  // To keep alignment: we render a heatmap row that contains a cell for each entry (note OR rest) with empty cells for non-notes.
+  const heatLabel = el('div', { class: 'heatmap-label' }, `Spatial-break frequency · ${enabledAligned.length} version${enabledAligned.length === 1 ? '' : 's'} active`);
+  const heatRow = el('div', { class: 'heatmap-row' });
+  noteIdx = 0;
+  const maxBreak = Math.max(1, ...breakCount);
+  for (let i = 0; i < allEntries.length; i++) {
+    const e = allEntries[i];
+    if (e.kind !== 'note') {
+      heatRow.appendChild(el('div', { class: 'heatmap-cell', style: 'background: transparent;' }));
+      continue;
+    }
+    const c = breakCount[noteIdx];
+    const intensity = c / maxBreak;
+    const colorIdx = c === 0 ? 0 : Math.min(7, 1 + Math.floor(intensity * 6));
+    const cell = el('div', {
+      class: 'heatmap-cell',
+      style: `background: var(--hm-${colorIdx});`,
+      onmouseenter: (ev) => {
+        const r = ev.currentTarget.getBoundingClientRect();
+        showTooltip(`<span class="cjk">${escapeHtml(e.char)}</span> · ${c}/${enabledAligned.length} version${enabledAligned.length === 1 ? '' : 's'} break here`, r.right, r.top);
+      },
+      onmouseleave: hideTooltip,
+    }, c > 0 ? el('span', { class: 'hm-count' }, c.toString()) : null);
+    heatRow.appendChild(cell);
+    noteIdx++;
+  }
+
+  container.appendChild(heatLabel);
+  container.appendChild(heatRow);
+
+  wrap.appendChild(container);
+
+  if (state.selectedCharIdx != null) {
+    wrap.appendChild(buildDetailPanel(song, state.selectedCharIdx));
+  }
+
+  return wrap;
+}
+
+function buildBreakTicks(breakN, lineBreakN) {
+  const c = el('div', { class: 'break-ticks' });
+  for (let i = 0; i < breakN; i++) c.appendChild(el('div', { class: 'break-tick' }));
+  for (let i = 0; i < lineBreakN; i++) c.appendChild(el('div', { class: 'break-tick line' }));
+  return c;
+}
+
+function buildCharTooltip(e, noteIdx, breakCount, lineBreakCount) {
+  const lines = [];
+  lines.push(`<span class="cjk">${escapeHtml(e.char)}</span>`);
+  if (e.kind === 'rest') lines.push('rest');
+  else if (e.kind === 'instrumental') lines.push('instrumental note');
+  else {
+    lines.push(`m. ${e.measure}` + (e.pitch ? ` · ${escapeHtml(e.pitch)}` : ''));
+    lines.push(`dur: ${e.durationEighth.toFixed(2)}♪${e.melismaCount > 1 ? ` (${e.melismaCount}-note melisma)` : ''}`);
+    if (e.isLocalMax) lines.push('<span style="color:var(--localmax)">local max</span>');
+    if (noteIdx >= 0 && (breakCount > 0 || lineBreakCount > 0)) {
+      lines.push(`breaks after: ${breakCount}/${state.enabledVersions.size}` + (lineBreakCount > 0 ? ` (${lineBreakCount} line)` : ''));
+    }
+  }
+  return lines.join('<br>');
+}
+
+function buildCVControls(song) {
+  const c = el('div', { class: 'cv-controls' });
+
+  // Version filter
+  const vf = el('div', { class: 'version-filter' });
+  vf.appendChild(el('span', { style: 'color: var(--text-3); margin-right: 6px; font-size:11px; text-transform:uppercase; letter-spacing:.1em;' }, 'Versions:'));
+  const allBtn = el('span', {
+    class: 'version-checkbox' + (state.enabledVersions.size === song.aligned.filter(v => !v.ignored).length ? ' on' : ''),
+    onclick: () => {
+      const all = song.aligned.filter(v => !v.ignored).map(v => v.id);
+      if (state.enabledVersions.size === all.length) state.enabledVersions = new Set();
+      else state.enabledVersions = new Set(all);
+      renderMain();
+    },
+  }, 'all');
+  vf.appendChild(allBtn);
+  for (const v of song.aligned) {
+    const ignored = v.ignored;
+    const on = state.enabledVersions.has(v.id);
+    const cb = el('span', {
+      class: 'version-checkbox' + (on ? ' on' : '') + (ignored ? ' ignored' : ''),
+      title: ignored ? `Ignored: ${v.reason}` : (v.alignmentStatus !== 'aligned' ? `⚠ ${v.alignmentStatus}` : ''),
+      onclick: ignored ? null : () => {
+        if (state.enabledVersions.has(v.id)) state.enabledVersions.delete(v.id);
+        else state.enabledVersions.add(v.id);
+        renderMain();
+      },
+    }, `[${v.id}]`);
+    vf.appendChild(cb);
+  }
+
+  // px-per-eighth slider
+  const slider = el('label', {}, [
+    'Scale: ',
+    el('input', {
+      type: 'range', min: '6', max: '30', value: state.pixelsPerEighth.toString(),
+      oninput: (e) => { state.pixelsPerEighth = parseInt(e.target.value, 10); renderMain(); },
+    }),
+  ]);
+
+  // Legend
+  const legend = el('div', { class: 'legend' }, [
+    el('span', {}, [el('span', { class: 'swatch', style: 'background: var(--bar-default);' }), 'note']),
+    el('span', {}, [el('span', { class: 'swatch', style: 'background: var(--localmax);' }), 'local max']),
+    el('span', {}, [el('span', { class: 'swatch', style: 'background: var(--rest); background-image: repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,.4) 2px, rgba(0,0,0,.4) 4px);' }), 'rest/instr.']),
+    el('span', {}, [el('span', { class: 'swatch', style: 'background: var(--accent);' }), '/ break']),
+    el('span', {}, [el('span', { class: 'swatch', style: 'background: var(--warn);' }), '// line break']),
+  ]);
+
+  c.appendChild(vf);
+  c.appendChild(slider);
+  c.appendChild(legend);
+  return c;
+}
+
+function buildDetailPanel(song, idx) {
+  const e = song.parsed.noteEntries[idx];
+  if (!e) return el('div');
+  const prev = idx > 0 ? song.parsed.noteEntries[idx - 1] : null;
+  const next = idx < song.parsed.noteEntries.length - 1 ? song.parsed.noteEntries[idx + 1] : null;
+
+  const versionsHere = song.aligned
+    .filter(v => !v.ignored)
+    .map(v => {
+      const isLine = v.lineBreakPositions.includes(idx);
+      const isBreak = v.breakPositions.includes(idx) || isLine;
+      return { v, isBreak, isLine };
+    });
+
+  const panel = el('div', { class: 'detail-panel' });
+  panel.appendChild(el('h4', {}, `Character #${idx + 1} of ${song.parsed.noteEntries.length}`));
+  panel.appendChild(el('div', { class: 'detail-grid' }, [
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'character'), el('span', { class: 'v cjk' }, e.char)]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'measure'), el('span', { class: 'v' }, e.measure.toString())]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'pitch'), el('span', { class: 'v' }, e.pitch || '—')]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'duration'), el('span', { class: 'v' }, `${e.durationEighth.toFixed(2)}♪ (${e.durationQL.toFixed(2)}q)`)]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'melisma'), el('span', { class: 'v' }, e.melismaCount > 1 ? `${e.melismaCount} notes` : '—')]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'preceding dur'), el('span', { class: 'v' }, prev ? `${prev.durationEighth.toFixed(2)}♪` : '—')]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'following dur'), el('span', { class: 'v' }, next ? `${next.durationEighth.toFixed(2)}♪` : '—')]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'local max'), el('span', { class: 'v' }, e.isLocalMax ? 'yes' : 'no')]),
+  ]));
+
+  const breakers = versionsHere.filter(x => x.isBreak);
+  panel.appendChild(el('h4', { style: 'margin-top: 14px;' }, `Spatial breaks after this character — ${breakers.length}/${versionsHere.length} version${versionsHere.length === 1 ? '' : 's'}`));
+  const pillRow = el('div', { class: 'detail-versions' });
+  for (const { v, isBreak, isLine } of versionsHere) {
+    pillRow.appendChild(el('span', {
+      class: 'version-pill' + (isLine ? ' has-line-break' : isBreak ? ' has-break' : ''),
+    }, `[${v.id}]${isLine ? ' //' : isBreak ? ' /' : ''}`));
+  }
+  panel.appendChild(pillRow);
+
+  return panel;
+}
+
+/* ============================================================
+ *  Measure view
+ * ============================================================ */
+
+function buildMeasureView(song) {
+  const wrap = el('div');
+  wrap.appendChild(buildCVControls(song));
+
+  // Group entries by measure
+  const byMeasure = new Map();
+  song.parsed.entries.forEach((e, i) => {
+    if (!byMeasure.has(e.measure)) byMeasure.set(e.measure, []);
+    byMeasure.get(e.measure).push({ e, entryIdx: i });
+  });
+
+  // Compute break counts per note index
+  const noteEntries = song.parsed.noteEntries;
+  const breakCount = new Array(noteEntries.length).fill(0);
+  const lineBreakCount = new Array(noteEntries.length).fill(0);
+  const enabledAligned = song.aligned.filter(v => !v.ignored && state.enabledVersions.has(v.id));
+  for (const v of enabledAligned) {
+    for (const p of v.breakPositions) if (p >= 0 && p < breakCount.length) breakCount[p]++;
+    for (const p of v.lineBreakPositions) if (p >= 0 && p < lineBreakCount.length) { lineBreakCount[p]++; breakCount[p]++; }
+  }
+  // Compute note-idx for each entry
+  const noteIdxOf = new Array(song.parsed.entries.length).fill(-1);
+  let ni = 0;
+  for (let i = 0; i < song.parsed.entries.length; i++) {
+    if (song.parsed.entries[i].kind === 'note') { noteIdxOf[i] = ni; ni++; }
+  }
+
+  let maxDur = 1;
+  for (const e of song.parsed.entries) if (e.durationEighth > maxDur) maxDur = e.durationEighth;
+  const px = Math.max(8, state.pixelsPerEighth);
+
+  const table = el('table', { class: 'measure-table' });
+  table.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', {}, 'Measure'),
+    el('th', {}, 'Characters · breaks'),
+  ])));
+  const tbody = el('tbody');
+
+  const sortedMeasures = Array.from(byMeasure.keys()).sort((a, b) => a - b);
+  for (const m of sortedMeasures) {
+    const items = byMeasure.get(m);
+    const track = el('div', { class: 'm-track' });
+    for (const { e, entryIdx } of items) {
+      const myNoteIdx = noteIdxOf[entryIdx];
+      const cellClasses = ['m-cell'];
+      if (e.kind === 'rest') cellClasses.push('rest');
+      if (e.kind === 'instrumental') cellClasses.push('rest');
+      if (e.kind === 'note' && e.isLocalMax) cellClasses.push('localmax');
+
+      const barH = Math.max(2, e.durationEighth * px);
+      const c = el('div', { class: cellClasses.join(' ') }, [
+        el('div', { class: 'm-bar', style: `height: ${barH}px;` }),
+        el('div', { class: 'm-char' }, e.char),
+      ]);
+      if (myNoteIdx >= 0) {
+        const bc = breakCount[myNoteIdx];
+        const lbc = lineBreakCount[myNoteIdx];
+        if (bc > 0) {
+          const opacity = Math.min(1, 0.3 + (bc / Math.max(1, enabledAligned.length)) * 0.7);
+          const brk = el('div', { class: 'm-break' + (lbc > 0 ? ' line' : ''), style: `--break-opacity: ${opacity};` });
+          c.appendChild(brk);
+        }
+        c.addEventListener('mouseenter', (ev) => {
+          const r = ev.currentTarget.getBoundingClientRect();
+          showTooltip(buildCharTooltip(e, myNoteIdx, bc, lbc), r.right, r.top);
+        });
+        c.addEventListener('mouseleave', hideTooltip);
+        c.addEventListener('click', () => {
+          state.selectedCharIdx = myNoteIdx;
+          state.view = 'character';
+          renderMain();
+        });
+      }
+      track.appendChild(c);
+    }
+    tbody.appendChild(el('tr', {}, [
+      el('td', { class: 'm-num' }, m.toString()),
+      el('td', {}, track),
+    ]));
+  }
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+/* ============================================================
+ *  Alignment view
+ * ============================================================ */
+
+function buildAlignmentView(song) {
+  const wrap = el('div');
+  const mxlChars = song.parsed.noteEntries.map(e => e.char);
+
+  for (const v of song.aligned) {
+    const card = el('div', { class: 'alignment-card ' + v.alignmentStatus });
+    card.appendChild(el('h4', {}, [
+      el('span', {}, [
+        `[${v.id}]`,
+        v.metadata ? el('span', { style: 'color: var(--text-3); margin-left: 8px; font-weight: 400; font-size: 11px;' }, v.metadata.slice(0, 80)) : null,
+      ]),
+      el('span', { class: 'status ' + v.alignmentStatus }, v.alignmentStatus),
+    ]));
+
+    if (v.ignored) {
+      card.appendChild(el('div', { class: 'align-stats' }, `Skipped — ${v.reason}`));
+      if (v.lyricRaw) card.appendChild(el('div', { class: 'align-rows' }, [
+        el('div', { class: 'lbl' }, 'raw'),
+        el('div', { class: 'seq', html: escapeHtml(v.lyricRaw) }),
+      ]));
+      wrap.appendChild(card);
+      continue;
+    }
+
+    const stats = `MXL: ${v.mxlLength} chars  ·  MD: ${v.mdLength} chars  ·  / breaks: ${v.breakPositions.length}  ·  // line breaks: ${v.lineBreakPositions.length}`
+      + (v.firstMismatch >= 0 ? `  ·  first mismatch at position ${v.firstMismatch + 1}` : '');
+    card.appendChild(el('div', { class: 'align-stats' }, stats));
+
+    const minLen = Math.min(mxlChars.length, v.characters.length);
+    const mismatchSet = new Set(v.mismatches || []);
+
+    const mxlSpan = el('div', { class: 'seq' });
+    for (let i = 0; i < mxlChars.length; i++) {
+      const cls = i < minLen && mismatchSet.has(i) ? 'ch mismatch'
+                : i >= minLen ? 'ch extra'
+                : 'ch';
+      mxlSpan.appendChild(el('span', { class: cls }, mxlChars[i]));
+    }
+    const mdSpan = el('div', { class: 'seq' });
+    for (let i = 0; i < v.characters.length; i++) {
+      const cls = i < minLen && mismatchSet.has(i) ? 'ch mismatch'
+                : i >= minLen ? 'ch extra'
+                : 'ch';
+      mdSpan.appendChild(el('span', { class: cls }, v.characters[i]));
+    }
+
+    card.appendChild(el('div', { class: 'align-rows' }, [
+      el('div', { class: 'lbl' }, 'mxl'),
+      mxlSpan,
+      el('div', { class: 'lbl' }, 'md'),
+      mdSpan,
+    ]));
+
+    wrap.appendChild(card);
+  }
+  return wrap;
+}
+
+/* ============================================================
+ *  Stats view
+ * ============================================================ */
+
+function buildStatsView(song) {
+  const wrap = el('div');
+  const noteEntries = song.parsed.noteEntries;
+  const N = noteEntries.length;
+
+  // Active versions (not ignored, not necessarily checked — for stats use ALL non-ignored)
+  const activeVersions = song.aligned.filter(v => !v.ignored);
+  const V = activeVersions.length;
+
+  // Aggregate break info per position
+  const breakCount = new Array(N).fill(0);
+  for (const v of activeVersions) {
+    for (const p of v.breakPositions) if (p >= 0 && p < N) breakCount[p]++;
+    for (const p of v.lineBreakPositions) if (p >= 0 && p < N) breakCount[p]++;
+  }
+
+  const positionsWithAnyBreak = breakCount.filter(c => c > 0).length;
+  const unanimousPositions = V > 0 ? breakCount.filter(c => c === V).length : 0;
+  const localMaxima = noteEntries.filter(e => e.isLocalMax).length;
+
+  // Local-maxima vs breaks crosstabs
+  let lmWithNoBreak = 0, breaksAtNonLm = 0;
+  for (let i = 0; i < N; i++) {
+    if (noteEntries[i].isLocalMax && breakCount[i] === 0) lmWithNoBreak++;
+    if (!noteEntries[i].isLocalMax && breakCount[i] > 0) breaksAtNonLm++;
+  }
+
+  // Duration distribution (in eighth-note units, integer-binned)
+  const durMap = new Map();
+  for (const e of noteEntries) {
+    const key = e.durationEighth.toFixed(2);
+    durMap.set(key, (durMap.get(key) || 0) + 1);
+  }
+  const sortedDurs = Array.from(durMap.entries()).sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]));
+
+  const grid = el('div', { class: 'stats-grid' });
+
+  const card = (label, value, opts = {}) => {
+    const c = el('div', { class: 'stat-card' + (opts.full ? ' full' : '') });
+    c.appendChild(el('div', { class: 'label' }, label));
+    c.appendChild(el('div', { class: 'value ' + (opts.kind || '') }, value.toString()));
+    if (opts.sub) c.appendChild(el('div', { class: 'sub' }, opts.sub));
+    return c;
+  };
+
+  grid.appendChild(card('Total characters', N));
+  grid.appendChild(card('MV versions', V, { kind: 'accent' }));
+  grid.appendChild(card('Local maxima', localMaxima, { kind: 'localmax', sub: `${(localMaxima / Math.max(1, N) * 100).toFixed(1)}% of characters` }));
+  grid.appendChild(card('Positions w/ ≥1 break', positionsWithAnyBreak, { kind: 'accent', sub: `${(positionsWithAnyBreak / Math.max(1, N) * 100).toFixed(1)}% of positions` }));
+  grid.appendChild(card('Unanimous break positions', unanimousPositions, { kind: 'ok', sub: `breaks across all ${V} versions` }));
+  grid.appendChild(card('Local maxima w/ NO break', lmWithNoBreak, { kind: 'warn', sub: 'duration peak, no segmentation' }));
+  grid.appendChild(card('Breaks at non-local-max', breaksAtNonLm, { kind: 'warn', sub: 'segmentation without duration peak' }));
+
+  // Duration distribution
+  const distCard = el('div', { class: 'stat-card full' });
+  distCard.appendChild(el('div', { class: 'label' }, 'Duration distribution (eighth-note units)'));
+  const dmax = Math.max(1, ...sortedDurs.map(([, c]) => c));
+  const distBars = el('div', { class: 'dist-bars' });
+  for (const [d, c] of sortedDurs) {
+    const h = (c / dmax) * 100;
+    const bar = el('div', { class: 'dist-bar', style: `height: ${h}%;` }, [
+      el('div', { class: 'val' }, c.toString()),
+      el('div', { class: 'lbl' }, d),
+    ]);
+    distBars.appendChild(bar);
+  }
+  distCard.appendChild(distBars);
+  grid.appendChild(distCard);
+
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+/* ============================================================
+ *  Utils
+ * ============================================================ */
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+/* ============================================================
+ *  Wiring
+ * ============================================================ */
+
+document.addEventListener('DOMContentLoaded', async () => {
+  checkBrowserSupport();
+  $('#btn-open-folder').addEventListener('click', () => openFolder(true));
+  $('#btn-open-folder-2')?.addEventListener('click', () => openFolder(true));
+  $('#btn-rescan').addEventListener('click', () => scanFolder());
+  $('#btn-close').addEventListener('click', () => closeFolder());
+
+  // Try restore previous folder
+  if ('showDirectoryPicker' in window) {
+    const saved = await idbGet('dirHandle').catch(() => null);
+    if (saved) {
+      // Don't auto-grant — the API requires a user gesture for permission
+      // Show a button instead
+      const w = $('#welcome');
+      if (w) {
+        const btn = el('button', { onclick: () => openFolder(false) }, `Reopen "${saved.name}"`);
+        btn.style.marginRight = '8px';
+        const opener = $('#btn-open-folder-2');
+        opener.parentNode.insertBefore(btn, opener);
+      }
+    }
+  }
+
+  renderSidebar();
+  renderMain();
+});
+
+</script>
+</body>
+</html>
