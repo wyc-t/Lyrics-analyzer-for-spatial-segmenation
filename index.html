@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500;700&display=swap" rel="stylesheet">
 
 <!-- JSZip -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL6njuko7QrZqzg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
 :root {
@@ -1507,6 +1507,8 @@ async function scanFolder() {
 
   // Parse all songs in parallel
   await Promise.all(state.songs.map(loadSong));
+
+  await saveManifest(); // creates project.json on first run; no-op if already correct
 
   toast(`Loaded ${state.songs.length} song(s)` + (unpairedMxl.length + unpairedMd.length ? ` · ${unpairedMxl.length + unpairedMd.length} unpaired` : ''), 'ok');
 
