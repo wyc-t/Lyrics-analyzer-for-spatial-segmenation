@@ -851,6 +851,11 @@ main.main {
     <div class="spacer"></div>
     <span class="folder-name" id="folder-name"></span>
     <button id="btn-open-folder" class="primary">Open project folder…</button>
+    <label style="display:flex;align-items:center;gap:6px;color:var(--text-2);font-size:12px;">
+      Font
+      <input type="range" id="font-size-slider" min="10" max="18" value="13" style="width:72px;">
+      <span id="font-size-label" style="width:26px;">13px</span>
+    </label>
     <button id="btn-rescan" disabled>Rescan</button>
     <button id="btn-close" disabled>Close</button>
   </header>
@@ -2237,6 +2242,14 @@ function escapeHtml(s) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   checkBrowserSupport();
+  const fontSlider = $('#font-size-slider');
+  const fontLabel  = $('#font-size-label');
+  fontSlider.addEventListener('input', () => {
+    const v = fontSlider.value;
+    document.documentElement.style.fontSize = v + 'px';
+    fontLabel.textContent = v + 'px';
+  });
+
   $('#btn-open-folder').addEventListener('click', () => openFolder(true));
   $('#btn-open-folder-2')?.addEventListener('click', () => openFolder(true));
   $('#btn-rescan').addEventListener('click', () => scanFolder());
